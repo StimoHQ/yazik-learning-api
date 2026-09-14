@@ -1,0 +1,33 @@
+{
+  "name": "yazik-learning-api",
+  "version": "0.0.1",
+  "description": "",
+  "private": true,
+  "scripts": {
+    "main:dev": "pnpm --filter main start:dev",
+    "main:debug": "pnpm --filter main start:debug",
+    "main:build": "pnpm --filter main build",
+    "main:start": "pnpm --filter main start:prod"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devEngines": {
+    "packageManager": {
+      "name": "pnpm",
+      "version": "12.4.1",
+      "onFail": "download"
+    },
+    "runtime": {
+      "name": "node",
+      "version": "24.21.0",
+      "onFail": "download"
+    }
+  },
+  "packageManager": "pnpm@12.4.1",
+  "type": "module",
+  "devDependencies": {
+    "prettier": "^3.9.6",
+    "typescript": "^6.0.2"
+  }
+}
