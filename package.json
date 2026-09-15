@@ -7,7 +7,9 @@
     "main:dev": "pnpm --filter main start:dev",
     "main:debug": "pnpm --filter main start:debug",
     "main:build": "pnpm --filter main build",
-    "main:start": "pnpm --filter main start:prod"
+    "main:start": "pnpm --filter main start:prod",
+    "main:add": "pnpm --filter main add",
+    "main:add-dev": "pnpm --filter main add -D"
   },
   "keywords": [],
   "author": "",

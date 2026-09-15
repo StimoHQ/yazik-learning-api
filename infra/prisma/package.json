@@ -1,0 +1,22 @@
+{
+  "name": "@yazik-learning-api/prisma",
+  "version": "1.0.0",
+  "description": "",
+  "main": "./dist/client.js",
+  "types": "./dist/client.d.ts",
+  "scripts": {
+    "generate": "prisma generate",
+    "build": "tsc"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "dependencies": {
+    "@prisma/client": "^7.10.0"
+  },
+  "devDependencies": {
+    "dotenv": "^17.4.2",
+    "prisma": "^7.0.0"
+  }
+}

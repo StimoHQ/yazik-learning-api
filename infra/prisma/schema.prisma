@@ -1,0 +1,164 @@
+generator client {
+  provider            = "prisma-client"
+  output              = "./generated"
+  moduleFormat        = "esm"
+  importFileExtension = "js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ============ ENUMS ============
+enum StudyStatus {
+  LEARNING // В процессе изучения
+  REVIEWING // На этапе повторения
+  MASTERED // Выучено
+}
+
+enum Language {
+  ENG
+  RU
+}
+
+enum Source {
+  GUTENBERG
+}
+
+enum IngestionStatus {
+  QUEUED // задача создана, ждёт в очереди Kafka
+  PROCESSING // consumer качает и индексирует
+  READY // предложения сохранены, контент читается
+  FAILED // терминальная ошибка (причина в ingest_error)
+}
+
+model User {
+  // Fields
+  id               Int               @id @default(autoincrement())
+  email            String            @unique
+  name             String?
+  createdAt        DateTime          @default(now()) @map("created_at")
+  updatedAt        DateTime          @updatedAt @map("updated_at")
+  userLexicalUnits UserLexicalUnit[]
+
+  //Table Meta
+  @@map("users")
+}
+
+model Text {
+  // Fields
+  id           Int               @id @default(autoincrement())
+  title        String
+  language     Language          @default(ENG)
+  source       Source            @default(GUTENBERG)
+  sourceObjId  Int               @map("source_obj_id")
+  sourceMeta   Json?             @map("source_meta") @db.JsonB
+  sentences    TextSentence[]
+  downloadTask TextDownloadTask?
+  createdAt    DateTime          @default(now()) @map("created_at")
+  updatedAt    DateTime          @updatedAt @map("updated_at")
+
+  //Table Meta
+  // Провенанс дублируется из задачи намеренно: source/sourceObjId — свойство самого текста,
+  // а не только очереди. Так «текст книги N» читается без join, и одна книга не порождает
+  // два текста.
+  @@unique([source, sourceObjId])
+  @@map("texts")
+}
+
+// Задача конвейера: скачать текст у источника и разбить на предложения.
+// Строка Text появляется только в момент READY, поэтому у Text нет ни статуса,
+// ни ошибки загрузки — всё это живёт здесь.
+model TextDownloadTask {
+  id          Int             @id @default(autoincrement())
+  status      IngestionStatus @default(QUEUED)
+  source      Source          @default(GUTENBERG)
+  sourceObjId Int             @map("source_obj_id")
+  ingestError String?         @map("ingest_error") @db.Text
+  // Момент перехода в терминальный статус (READY или FAILED). Не updatedAt: повторная
+  // постановка перезаписывает задачу, и время завершённой попытки иначе терялось бы.
+  finishedAt  DateTime?       @map("finished_at")
+  textId      Int?            @unique @map("text_id")
+  createdAt   DateTime        @default(now()) @map("created_at")
+  updatedAt   DateTime        @updatedAt @map("updated_at")
+
+  // Relations
+  // Cascade: удалённый текст освобождает и свою задачу, иначе @@unique([source, sourceObjId])
+  // остался бы занят мёртвой строкой и повторная загрузка стала бы невозможна.
+  text Text? @relation(fields: [textId], references: [id], onDelete: Cascade)
+
+  //Table Meta
+  // Одна задача на объект источника. FAILED не блокирует повторный POST: он перепоставляет
+  // эту же строку (см. TextService.create).
+  @@unique([source, sourceObjId])
+  @@map("text_download_tasks")
+}
+
+model LexicalUnit {
+  // Fields
+  id               Int                     @id @default(autoincrement())
+  value            String
+  occurrences      LexicalUnitOccurrence[]
+  userLexicalUnits UserLexicalUnit[]
+  createdAt        DateTime                @default(now()) @map("created_at")
+  updatedAt        DateTime                @updatedAt @map("updated_at")
+
+  //Table Meta
+  @@unique([value])
+  @@map("lexical_units")
+}
+
+model TextSentence {
+  // Fields
+  id        Int      @id @default(autoincrement())
+  textId    Int      @map("text_id")
+  position  Int // 0-based порядковый номер предложения в тексте
+  content   String   @db.Text
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  text        Text                    @relation(fields: [textId], references: [id], onDelete: Cascade)
+  occurrences LexicalUnitOccurrence[]
+
+  //Table Meta
+  @@unique([textId, position])
+  @@map("text_sentences")
+}
+
+model LexicalUnitOccurrence {
+  // Fields
+  id                     Int          @id @default(autoincrement())
+  sentenceId             Int          @map("sentence_id")
+  lexicalUnitId          Int          @map("lexical_unit_id")
+  lexicalUnitStartPos    Int          @map("lexical_unit_start_pos") // позиция юнита внутри sentence.content
+  lexicalUnitTranslation String       @map("lexical_unit_translation")
+  createdAt              DateTime     @default(now()) @map("created_at")
+  updatedAt              DateTime     @updatedAt @map("updated_at")
+  // Relations
+  // Контекст вхождения — это предложение: вместо дублирующей строки context ссылка на TextSentence.
+  // Cascade: переразбивка текста (замена предложений) уничтожает и вхождения с контекстным переводом.
+  sentence               TextSentence @relation(fields: [sentenceId], references: [id], onDelete: Cascade)
+  lexicalUnit            LexicalUnit  @relation(fields: [lexicalUnitId], references: [id], onDelete: Cascade)
+
+  //Table Meta
+  @@map("lexical_unit_occurrences")
+}
+
+model UserLexicalUnit {
+  // Fields
+  id            Int         @id @default(autoincrement())
+  userId        Int         @map("user_id")
+  lexicalUnitId Int         @map("lexical_unit_id")
+  status        StudyStatus @default(LEARNING)
+  userNote      String?     @map("user_note")
+  createdAt     DateTime    @default(now()) @map("created_at")
+  updatedAt     DateTime    @updatedAt @map("updated_at")
+  // Relations
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lexicalUnit   LexicalUnit @relation(fields: [lexicalUnitId], references: [id], onDelete: NoAction)
+
+  //Table Meta
+  @@unique([userId, lexicalUnitId])
+  @@map("user_lexical_units")
+}
